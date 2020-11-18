@@ -103,13 +103,17 @@ class Transaction(APIResponse):
                 try:
                     source = source[key]
                 except KeyError as error:
+                    try:
+                        txn_id = f"Transaction {self['transaction_info']['transaction_id']}"
+                    except KeyError:
+                        txn_id = "Transaction"
                     if source is self._response:
                         raise errors.MissingFieldError(
-                            f"transaction was not loaded with {error.args[0]!r} field",
+                            f"{txn_id} was not loaded with {error.args[0]!r} field",
                         ) from None
                     else:
                         key_s = '→'.join(repr(key) for key in keys[:index + 1])
-                        raise KeyError(f"Transaction {key_s}") from None
+                        raise KeyError(f"{txn_id} {key_s}") from None
             return func(source)
         return _load_from_response
 
