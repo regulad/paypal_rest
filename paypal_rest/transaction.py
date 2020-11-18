@@ -47,7 +47,7 @@ class CartItem(NamedTuple):
     total_price: Amount
 
     @classmethod
-    def from_api(cls, source: APIResponse) -> 'CartItem':
+    def from_api(cls, source: APIResponse, default_name: Optional[str]=None) -> 'CartItem':
         total_price = Amount.from_api(source['item_amount'])
         quantity = Decimal(source.get('item_quantity', 1))
         try:
@@ -56,7 +56,7 @@ class CartItem(NamedTuple):
             unit_price = total_price._replace(number=total_price.number / quantity)
         return cls(
             source.get('item_code'),
-            source.get('item_name'),
+            source.get('item_name', default_name),
             source.get('item_description'),
             quantity,
             unit_price,
@@ -93,41 +93,32 @@ class Transaction(APIResponse):
     def __len__(self) -> int:
         return len(self._response)
 
-    def _from_response(  # type:ignore[misc]
+    def _get_from_response(self, *keys: str) -> Any:
+        retval = self._response
+        for index, key in enumerate(keys):
+            try:
+                retval = retval[key]
+            except KeyError as error:
+                try:
+                    txn_id = f"Transaction {self['transaction_info']['transaction_id']}"
+                except KeyError:
+                    txn_id = "Transaction"
+                if index:
+                    key_s = '→'.join(repr(key) for key in keys[:index + 1])
+                    raise KeyError(f"{txn_id} {key_s}") from None
+                else:
+                    raise errors.MissingFieldError(
+                        f"{txn_id} was not loaded with {error.args[0]!r} field",
+                    ) from None
+        return retval
+
+    def _wrap_response(  # type:ignore[misc]
             func: Callable[[Any], T],
             *keys: str,
     ) -> Callable[['Transaction'], T]:
-        def _load_from_response(self: 'Transaction') -> T:
-            source = self._response
-            for index, key in enumerate(keys):
-                try:
-                    source = source[key]
-                except KeyError as error:
-                    try:
-                        txn_id = f"Transaction {self['transaction_info']['transaction_id']}"
-                    except KeyError:
-                        txn_id = "Transaction"
-                    if source is self._response:
-                        raise errors.MissingFieldError(
-                            f"{txn_id} was not loaded with {error.args[0]!r} field",
-                        ) from None
-                    else:
-                        key_s = '→'.join(repr(key) for key in keys[:index + 1])
-                        raise KeyError(f"{txn_id} {key_s}") from None
-            return func(source)
-        return _load_from_response
-
-    def _cart_items(cart_info: APIResponse) -> Iterator[CartItem]:  # type:ignore[misc]
-        try:
-            item_seq = cart_info['item_details']
-        except KeyError:
-            pass
-        else:
-            for source in item_seq:
-                try:
-                    yield CartItem.from_api(source)
-                except KeyError:
-                    pass
+        def response_wrapper(self: 'Transaction') -> T:
+            return func(self._get_from_response(*keys))
+        return response_wrapper
 
     def _fee_amount(txn_info: APIResponse) -> Optional[Amount]:  # type:ignore[misc]
         try:
@@ -137,28 +128,44 @@ class Transaction(APIResponse):
         else:
             return Amount.from_api(raw_fee)
 
-    amount = _from_response(
+    amount = _wrap_response(
         Amount.from_api,
         'transaction_info',
         'transaction_amount',
     )
-    cart_items = _from_response(_cart_items, 'cart_info')
-    fee_amount = _from_response(_fee_amount, 'transaction_info')
-    initiation_date = _from_response(
+    fee_amount = _wrap_response(_fee_amount, 'transaction_info')
+    initiation_date = _wrap_response(
         parse_datetime,
         'transaction_info',
         'transaction_initiation_date',
     )
-    payer_email = _from_response(str, 'payer_info', 'email_address')
-    payer_fullname = _from_response(str, 'payer_info', 'payer_name', 'alternate_full_name')
-    status = _from_response(
+    payer_email = _wrap_response(str, 'payer_info', 'email_address')
+    payer_fullname = _wrap_response(str, 'payer_info', 'payer_name', 'alternate_full_name')
+    status = _wrap_response(
         TransactionStatus.__getitem__,
         'transaction_info',
         'transaction_status',
     )
-    transaction_id = _from_response(str, 'transaction_info', 'transaction_id')
-    updated_date = _from_response(
+    transaction_id = _wrap_response(str, 'transaction_info', 'transaction_id')
+    updated_date = _wrap_response(
         parse_datetime,
         'transaction_info',
         'transaction_updated_date',
     )
+
+    def cart_items(self) -> Iterator[CartItem]:
+        cart_info = self._get_from_response('cart_info')
+        try:
+            item_seq = cart_info['item_details']
+        except KeyError:
+            pass
+        else:
+            try:
+                default_name = self['transaction_info']['transaction_subject']
+            except KeyError:
+                default_name = None
+            for source in item_seq:
+                try:
+                    yield CartItem.from_api(source, default_name)
+                except KeyError:
+                    pass

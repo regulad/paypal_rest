@@ -144,6 +144,20 @@ def test_cart_items():
         (Decimal('15.98'), 'USD'),
     )
 
+@pytest.mark.parametrize('subject', [
+    'test subject',
+    '$6.99 Subscription',
+    None,
+])
+def test_unnamed_cart_item_uses_transaction_subject(subject):
+    source = {
+        'cart_info': cart_info({'number': '6.99'}),
+        'transaction_info': transaction_info(subject=subject),
+    }
+    txn = txn_mod.Transaction(source)
+    item1, = txn.cart_items()
+    assert item1.name == subject
+
 def test_cart_empty():
     txn = txn_mod.Transaction({'cart_info': {}})
     assert not any(txn.cart_items())
@@ -217,4 +231,10 @@ def test_updated_date():
 def test_info_missing(method_name):
     txn = txn_mod.Transaction({})
     with pytest.raises(errors.MissingFieldError):
-        getattr(txn, method_name)()
+        result = getattr(txn, method_name)()
+        try:
+            do_next = iter(result) is result
+        except TypeError:
+            do_next = False
+        if do_next:
+            next(result)
