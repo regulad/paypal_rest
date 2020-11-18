@@ -140,7 +140,8 @@ def summarize_transaction(txn: Transaction, stream: TextIO) -> None:
         txn_amt = txn.amount()
         cart.append(CartItem(None, txn_name, None, 1, txn_amt, txn_amt))
     fee_amt = txn.fee_amount()
-    cart.append(CartItem(None, "PayPal Fee", None, 1, fee_amt, fee_amt))
+    if fee_amt is not None:
+        cart.append(CartItem(None, "PayPal Fee", None, 1, fee_amt, fee_amt))
     names = [
         item.name or item.description or item.code or "Unknown Item"
         for item in cart

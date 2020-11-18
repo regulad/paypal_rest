@@ -129,13 +129,21 @@ class Transaction(APIResponse):
                 except KeyError:
                     pass
 
+    def _fee_amount(txn_info: APIResponse) -> Optional[Amount]:  # type:ignore[misc]
+        try:
+            raw_fee = txn_info['fee_amount']
+        except KeyError:
+            return None
+        else:
+            return Amount.from_api(raw_fee)
+
     amount = _from_response(
         Amount.from_api,
         'transaction_info',
         'transaction_amount',
     )
     cart_items = _from_response(_cart_items, 'cart_info')
-    fee_amount = _from_response(Amount.from_api, 'transaction_info', 'fee_amount')
+    fee_amount = _from_response(_fee_amount, 'transaction_info')
     initiation_date = _from_response(
         parse_datetime,
         'transaction_info',

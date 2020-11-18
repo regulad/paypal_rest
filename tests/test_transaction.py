@@ -166,6 +166,10 @@ def test_fee_amount_whole(number):
     txn = txn_mod.Transaction({'transaction_info': source})
     assert txn.fee_amount() == (int(number), 'JPY')
 
+def test_fee_amount_none():
+    txn = txn_mod.Transaction({'transaction_info': {}})
+    assert txn.fee_amount() is None
+
 def test_payer_email():
     email = 'test@example.net'
     source = payer_info(email_address=email)
