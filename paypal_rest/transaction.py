@@ -79,6 +79,13 @@ class TransactionStatus(enum.Enum):
 
 
 class Transaction(APIResponse):
+    """PayPal Transaction wrapper
+
+    The public methods of a Transaction know how to traverse PayPal's JSON
+    response and turn the data into native Python objects. If Transaction is
+    missing a method you need, you can also use standarding Mapping methods to
+    access to raw response.
+    """
     __slots__ = ['_response']
 
     def __init__(self, response: APIResponse) -> None:
@@ -113,11 +120,28 @@ class Transaction(APIResponse):
         return retval
 
     def _wrap_response(  # type:ignore[misc]
+            name: str,
             func: Callable[[Any], T],
             *keys: str,
+            doc: Optional[str]=None,
+            key_doc: Optional[str]=None,
+            return_doc: Optional[str]=None,
     ) -> Callable[['Transaction'], T]:
+        if doc is None:
+            if key_doc is None:
+                key_doc = f"``{keys[-1]}``"
+            if return_doc is None:
+                if name.endswith('amount'):
+                    return_doc = 'Amount'
+                elif name.endswith('date'):
+                    return_doc = 'datetime'
+                else:
+                    return_doc = func.__name__
+            doc = f"Return the transaction's {key_doc} as a ``{return_doc}``"
         def response_wrapper(self: 'Transaction') -> T:
             return func(self._get_from_response(*keys))
+        response_wrapper.__name__ = name
+        response_wrapper.__doc__ = doc
         return response_wrapper
 
     def _fee_amount(txn_info: APIResponse) -> Optional[Amount]:  # type:ignore[misc]
@@ -129,31 +153,60 @@ class Transaction(APIResponse):
             return Amount.from_api(raw_fee)
 
     amount = _wrap_response(
+        'amount',
         Amount.from_api,
         'transaction_info',
         'transaction_amount',
     )
-    fee_amount = _wrap_response(_fee_amount, 'transaction_info')
+    fee_amount = _wrap_response(
+        'fee_amount',
+        _fee_amount,
+        'transaction_info',
+        key_doc='``fee_amount``',
+    )
     initiation_date = _wrap_response(
+        'initiation_date',
         parse_datetime,
         'transaction_info',
         'transaction_initiation_date',
     )
-    payer_email = _wrap_response(str, 'payer_info', 'email_address')
-    payer_fullname = _wrap_response(str, 'payer_info', 'payer_name', 'alternate_full_name')
+    payer_email = _wrap_response(
+        'payer_email',
+        str,
+        'payer_info',
+        'email_address',
+        key_doc="payer's email address",
+    )
+    payer_fullname = _wrap_response(
+        'payer_fullname',
+        str,
+        'payer_info',
+        'payer_name',
+        'alternate_full_name',
+        key_doc="payer's full name",
+    )
     status = _wrap_response(
+        'status',
         TransactionStatus.__getitem__,
         'transaction_info',
         'transaction_status',
+        return_doc=TransactionStatus.__name__,
     )
-    transaction_id = _wrap_response(str, 'transaction_info', 'transaction_id')
+    transaction_id = _wrap_response(
+        'transaction_id',
+        str,
+        'transaction_info',
+        'transaction_id',
+    )
     updated_date = _wrap_response(
+        'updated_date',
         parse_datetime,
         'transaction_info',
         'transaction_updated_date',
     )
 
     def cart_items(self) -> Iterator[CartItem]:
+        """Iterate a ``CartItem`` object for each item in the transaction's cart"""
         cart_info = self._get_from_response('cart_info')
         try:
             item_seq = cart_info['item_details']

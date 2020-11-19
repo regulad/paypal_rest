@@ -15,4 +15,11 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 class MissingFieldError(KeyError):
+    """Error raised when code tries to access an unloaded field
+
+    This error is raised by PayPal object classes when the caller tries to
+    access a field that was not loaded in the original API call. For
+    example, trying to get a payer's name or email address from a Transaction
+    when the ``fields`` argument did not include ``TransactionFields.PAYER``.
+    """
     pass

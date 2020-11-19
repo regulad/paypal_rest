@@ -53,13 +53,28 @@ class PayPalSite(enum.Enum):
 
 
 class PayPalFields(enum.Flag):
+    """Base class for PayPal fields specifiers
+
+    Multiple PayPal APIs accept a ``fields`` parameter to let the user specify
+    what details to return. This class lets code enumerate acceptable values
+    and combine them programmatically. The ``param_value`` method then helps
+    ``PayPalAPIClient`` format the result when needed.
+    """
+
     @classmethod
     def choices(cls) -> Iterator[str]:
+        """Iterate the names of all field values"""
         for flag in cls:
             yield flag.name.lower()
 
     @classmethod
     def combine(cls: Type[FieldsType], fields: Optional[Sequence[FieldsType]]=None) -> FieldsType:
+        """Combine multiple field objects into one
+
+        This method just returns the result of ORing all of the fields in the
+        sequence together. If no argument is given or the sequence is empty,
+        return the combination of all fields.
+        """
         if fields:
             fields_iter = iter(fields)
         else:
@@ -71,18 +86,25 @@ class PayPalFields(enum.Flag):
 
     @classmethod
     def from_arg(cls: Type[FieldsType], arg: str) -> FieldsType:
+        """Return a field object from an argument name string"""
         try:
             return cls[arg.upper()]
         except KeyError:
             raise ValueError(f"unknown {cls.__name__} {arg!r}") from None
 
     def is_base_field(self) -> bool:
+        """Return true if this is a single field value, not a combination"""
         return not math.log2(self.value) % 1
 
     def _base_value(self) -> str:
         return self.name.lower()
 
     def param_value(self) -> str:
+        """Return these fields formatted as a query string
+
+        The result is in the format PayPal's API expects for ``fields``
+        parameters.
+        """
         return ','.join(
             flag._base_value()
             for flag in type(self)
@@ -111,6 +133,17 @@ class TransactionFields(PayPalFields):
 
 
 class PayPalSession(requests_oauthlib.OAuth2Session):
+    """Low-level HTTP session for the PayPal API
+
+    This is a subclass of requests_oauthlib.OAuth2Session that implements
+    PayPal's recommended authorization strategy: if an API request returns
+    HTTP Unauthorized, get an OAuth token and retry. This gracefully handles
+    refreshing expired tokens.
+
+    This class only handles the mechanics of handling an HTTP connection.
+    It doesn't know anything about the higher-level REST API. That's the job
+    of ``PayPalAPIClient``.
+    """
     TOKEN_PATH = '/v1/oauth2/token'
 
     def __init__(self, client: oauth2.Client, client_secret: str) -> None:
@@ -130,12 +163,33 @@ class PayPalSession(requests_oauthlib.OAuth2Session):
 
 
 class PayPalAPIClient:
+    """Primary access point for the PayPal API
+
+    This is the primary class of the library. Most users will instantiate a
+    ``PayPalAPIClient`` using one of the constructor classmethods, then call
+    methods to make API calls.
+    """
+
     def __init__(
             self,
             session: requests.Session,
             root_url: Union[str, PayPalSite]=PayPalSite.SANDBOX,
             logger: Optional[logging.Logger]=None,
     ) -> None:
+        """Low-level constructor
+
+        ``PayPalAPIClient`` expects its underlying ``Session`` object to know
+        how to authorize itself to PayPal. Usually that means using an instance
+        of ``PayPalSession``. You can implement and provide your own subclass
+        of ``requests.Session`` to do this if you prefer.
+
+        ``root_url`` is either a PayPalSite value, or a string with a full URL
+        to a PayPal API endpoint.
+
+        ``logger`` is a ``logging.Logger`` object where all log messages (like
+        API errors) will be sent. If none is provided, this instance will get
+        its own, with a name based on the hostname in ``root_url``.
+        """
         self._session = session
         if isinstance(root_url, str):
             self._root_url = root_url
@@ -156,6 +210,15 @@ class PayPalAPIClient:
             root_url: Union[str, PayPalSite]=PayPalSite.SANDBOX,
             logger: Optional[logging.Logger]=None,
     ) -> 'PayPalAPIClient':
+        """High-level constructor from individual string arguments
+
+        Given ``client_id`` and ``client_secret`` strings, this method
+        constructs a ``PayPalSesssion`` from them, and then returns a
+        ``PayPalAPIClient`` backed by it.
+
+        ``root_url`` and ``logger`` arguments are passed directly to
+        ``PayPalAPIClient.__init__``.
+        """
         client = oauth2.BackendApplicationClient(client_id=client_id)
         session = PayPalSession(client, client_secret)
         return cls(session, root_url, logger)
@@ -167,6 +230,17 @@ class PayPalAPIClient:
             default_url: Union[str, PayPalSite]=PayPalSite.SANDBOX,
             logger: Optional[logging.Logger]=None,
     ) -> 'PayPalAPIClient':
+        """High-level constructor from a configuration mapping
+
+        Given a mapping of strings (e.g., a configparser section object),
+        gets the arguments necessary to call ``from_client_secret``, and calls
+        it.
+
+        If the mapping has a ``site`` key, the value will be used as the
+        ``root_url``. Otherwise, ``root_url`` has the value of ``default_url``.
+
+        ``logger`` is passed directly to ``PayPalAPIClient.__init__``.
+        """
         try:
             client_id = config['client_id']
             client_secret = config['client_secret']
@@ -217,6 +291,7 @@ class PayPalAPIClient:
             subscription_id: str,
             fields: SubscriptionFields=SubscriptionFields.ALL,
     ) -> APIResponse:
+        """Fetch and return a subscription by its id"""
         return self._get_json(f'/v1/billing/subscriptions/{subscription_id}', {
             'fields': fields.param_value(),
         })
@@ -228,6 +303,21 @@ class PayPalAPIClient:
             start_date: Optional[datetime.datetime]=None,
             fields: TransactionFields=TransactionFields.TRANSACTION,
     ) -> APIResponse:
+        """Find and return a transaction by its id
+
+        The PayPal API does not provide a way to look up transactions solely by
+        id. This is a convenience method that wraps the search method to search
+        different windows of time until it finds the desired transaction.
+
+        ``start_date`` and ``end_date`` specify the full window of time to
+        search. This method starts by searching 30 days before ``end_date``,
+        then the previous 30 days, and so on until it reaches ``start_date``.
+        The default ``end_date`` is now, and the default ``start_date`` is
+        three years ago (the API only supports searches this far back).
+
+        ``fields`` is a TransactionFields object that flags the information to
+        include in the returned Transaction.
+        """
         now = datetime.datetime.now(datetime.timezone.utc)
         if end_date is None:
             end_date = now
@@ -256,6 +346,12 @@ class PayPalAPIClient:
             end_date: datetime.datetime,
             fields: TransactionFields=TransactionFields.TRANSACTION,
     ) -> Iterator[Transaction]:
+        """Iterate transactions over a date range
+
+        ``start_date`` and ``end_date`` represent the range to query.
+        ``fields`` is a TransactionsFields object that flags the information to
+        include in returned Transactions.
+        """
         for page in self._iter_pages('/v1/reporting/transactions', {
                 'fields': fields.param_value(),
                 'start_date': start_date.isoformat(timespec='seconds'),
