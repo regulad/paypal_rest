@@ -15,16 +15,23 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from pathlib import Path
 from setuptools import setup
+
+README_PATH = Path(__file__).with_name('README.rst')
+
+with README_PATH.open() as readme_file:
+    long_description = readme_file.read()
 
 setup(
     name='paypal_rest',
-    description="Library to access PayPal's REST API",
     version='1.0.0',
     author='Software Freedom Conservancy',
     author_email='info@sfconservancy.org',
     license='GNU AGPLv3+',
     url='https://k.sfconservancy.org/NPO-Accounting/paypal_rest',
+    description="Library to access PayPal's REST API",
+    long_description=long_description,
 
     python_requires='>=3.6',
     install_requires=[
