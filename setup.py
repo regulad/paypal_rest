@@ -25,7 +25,7 @@ with README_PATH.open() as readme_file:
 
 setup(
     name='paypal_rest',
-    version='1.0.0',
+    version='1.0.1',
     author='Software Freedom Conservancy',
     author_email='info@sfconservancy.org',
     license='GNU AGPLv3+',

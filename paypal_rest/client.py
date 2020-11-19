@@ -19,6 +19,7 @@ import datetime
 import enum
 import logging
 import math
+import operator
 import urllib.parse as urlparse
 
 import requests
@@ -285,6 +286,47 @@ class PayPalAPIClient:
         ]
         self.logger.error(" — ".join(parts))
 
+    def _iter_date_params(
+            self,
+            start_date: datetime.datetime,
+            end_date: datetime.datetime,
+            params: Optional[Params]=None,
+    ) -> Iterator[Params]:
+        """Generate parameters with date windows to cover a wider span
+
+        The PayPal transaction search API only allows the ``start_date`` and
+        ``end_date`` to be a month apart. Given a user's desired date range and
+        other API parameters, this method generates parameters with different
+        date pairs to cover the entire date range.
+
+        Normally the method keeps incrementing ``start_date`` until the user's
+        desired ``end_date`` is reached. If the ``start_date`` if later than the
+        ``end_date``, instead it works backwards: it uses the ``start_date``
+        argument as the first ``end_date`` parameter, and keeps decrementing it
+        until the ``start_date`` parameter reaches the other end of the range.
+        """
+        if start_date > end_date:
+            key1 = 'end_date'
+            key2 = 'start_date'
+            days_sign = operator.neg
+            pred = operator.gt
+            limit_func = max
+        else:
+            key1 = 'start_date'
+            key2 = 'end_date'
+            days_sign = operator.pos
+            pred = operator.lt
+            limit_func = min
+        retval = collections.ChainMap(params or {}).new_child()
+        retval[key1] = start_date.isoformat(timespec='seconds')
+        next_date = start_date
+        date_diff = datetime.timedelta(days=days_sign(30))
+        while pred(next_date, end_date):
+            next_date = limit_func(next_date + date_diff, end_date)
+            retval[key2] = next_date.isoformat(timespec='seconds')
+            yield retval
+            retval[key1] = retval[key2]
+
     def get_subscription(
             self,
             subscription_id: str,
@@ -323,21 +365,15 @@ class PayPalAPIClient:
         if start_date is None:
             # The API only goes back three years
             start_date = now - datetime.timedelta(days=365 * 3)
-        date_diff = datetime.timedelta(days=30)
         response: APIResponse = {'transaction_details': None}
-        while end_date > start_date and not response['transaction_details']:
-            search_start = max(end_date - date_diff, start_date)
-            response = self._get_json('/v1/reporting/transactions', {
+        for params in self._iter_date_params(end_date, start_date, {
                 'transaction_id': transaction_id,
                 'fields': fields.param_value(),
-                'start_date': search_start.isoformat(timespec='seconds'),
-                'end_date': end_date.isoformat(timespec='seconds'),
-            })
-            end_date = search_start
-        if response['transaction_details']:
-            return Transaction(response['transaction_details'][0])
-        else:
-            raise ValueError(f"transaction {transaction_id!r} not found")
+        }):
+            response = self._get_json('/v1/reporting/transactions', params)
+            if response['transaction_details']:
+                return Transaction(response['transaction_details'][0])
+        raise ValueError(f"transaction {transaction_id!r} not found")
 
     def iter_transactions(
             self,
@@ -351,10 +387,9 @@ class PayPalAPIClient:
         ``fields`` is a TransactionsFields object that flags the information to
         include in returned Transactions.
         """
-        for page in self._iter_pages('/v1/reporting/transactions', {
+        for params in self._iter_date_params(start_date, end_date, {
                 'fields': fields.param_value(),
-                'start_date': start_date.isoformat(timespec='seconds'),
-                'end_date': end_date.isoformat(timespec='seconds'),
         }):
-            for txn_source in page['transaction_details']:
-                yield Transaction(txn_source)
+            for page in self._iter_pages('/v1/reporting/transactions', params):
+                for txn_source in page['transaction_details']:
+                    yield Transaction(txn_source)

@@ -26,7 +26,7 @@ from paypal_rest import client as client_mod
 from paypal_rest import transaction as txn_mod
 
 START_DATE = datetime.datetime(2020, 10, 1, 12, tzinfo=datetime.timezone.utc)
-END_DATE = START_DATE.replace(month=START_DATE.month + 1)
+END_DATE = START_DATE.replace(day=25)
 
 def test_transaction_type():
     txn_id = 'TYPETEST123456789'
@@ -86,6 +86,53 @@ def test_transaction_fields_formatting(fields):
         re.sub(r'_info$', '', name)
         for name in session._requests[0].params.get('fields', '').split(',')
     }
+
+@pytest.mark.parametrize('days_diff', [10, 45, 89])
+def test_iter_transactions_date_window(days_diff):
+    start_date = START_DATE
+    end_date = start_date + datetime.timedelta(days=days_diff)
+    session = MockSession(
+        MockResponse({'page': 1, 'total_pages': 1, 'transaction_details': []}),
+        infinite=True,
+    )
+    paypal = client_mod.PayPalAPIClient(session)
+    assert not any(paypal.iter_transactions(start_date, end_date))
+    req_count = len(session._requests)
+    assert req_count == ((days_diff // 30) + 1)
+    start_str = start_date.isoformat(timespec='seconds')
+    end_str = end_date.isoformat(timespec='seconds')
+    prev_end = start_str
+    for number, request in enumerate(session._requests, 1):
+        assert request.params['start_date'] == prev_end
+        if number == req_count:
+            assert request.params['end_date'] == end_str
+        else:
+            assert prev_end < request.params['end_date'] < end_str
+            prev_end = request.params['end_date']
+
+@pytest.mark.parametrize('days_diff', [10, 45, 89])
+def test_get_transactions_date_window(days_diff):
+    end_date = END_DATE
+    start_date = end_date - datetime.timedelta(days=days_diff)
+    session = MockSession(
+        MockResponse({'page': 1, 'total_pages': 1, 'transaction_details': []}),
+        infinite=True,
+    )
+    paypal = client_mod.PayPalAPIClient(session)
+    with pytest.raises(ValueError):
+        paypal.get_transaction('DATEWINDOW1234567', end_date, start_date)
+    req_count = len(session._requests)
+    assert req_count == ((days_diff // 30) + 1)
+    start_str = start_date.isoformat(timespec='seconds')
+    end_str = end_date.isoformat(timespec='seconds')
+    prev_start = end_str
+    for number, request in enumerate(session._requests, 1):
+        assert request.params['end_date'] == prev_start
+        if number == req_count:
+            assert request.params['start_date'] == start_str
+        else:
+            assert prev_start > request.params['start_date'] > start_str
+            prev_start = request.params['start_date']
 
 @pytest.mark.parametrize('name', [
     'BAD_REQUEST',
