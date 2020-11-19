@@ -17,7 +17,6 @@
 import collections
 import datetime
 import enum
-import functools
 import logging
 import math
 import urllib.parse as urlparse
