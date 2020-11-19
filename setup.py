@@ -15,17 +15,18 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-
 from setuptools import setup
 
 setup(
     name='paypal_rest',
     description="Library to access PayPal's REST API",
-    version='0.9.0',
+    version='1.0.0',
     author='Software Freedom Conservancy',
     author_email='info@sfconservancy.org',
     license='GNU AGPLv3+',
+    url='https://k.sfconservancy.org/NPO-Accounting/paypal_rest',
 
+    python_requires='>=3.6',
     install_requires=[
         'iso8601>=0.1',  # Debian:python3-iso8601
         'oauthlib>=2.0',  # Debian:python3-oauthlib
