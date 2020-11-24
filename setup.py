@@ -25,7 +25,7 @@ with README_PATH.open() as readme_file:
 
 setup(
     name='paypal_rest',
-    version='1.0.1',
+    version='1.0.2',
     author='Software Freedom Conservancy',
     author_email='info@sfconservancy.org',
     license='GNU AGPLv3+',
@@ -38,6 +38,7 @@ setup(
         'iso8601>=0.1',  # Debian:python3-iso8601
         'oauthlib>=2.0',  # Debian:python3-oauthlib
         'pyxdg>=0.2',  # Debian:python3-xdg
+        'PyYAML>=3.0',  # Debian:python3-yaml
         'requests>=2.0',  # Debian:python3-requests
         'requests-oauthlib>=1.0',  # Debian:python3-requests-oauthlib
     ],
