@@ -189,7 +189,7 @@ def main(
                 paypal_obj = paypal.get_transaction(
                     paypal_id, args.end_date, args.start_date, args.transaction_fields,
                 )
-            yaml.dump(paypal_obj, stdout, Dumper=YAMLDumper)
+            yaml.dump([paypal_obj], stdout, Dumper=YAMLDumper)
     return 0
 
 entry_point = cliutil.make_entry_point(__name__, PROGNAME)
