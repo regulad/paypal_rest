@@ -343,7 +343,7 @@ class PayPalAPIClient:
             end_date: Optional[datetime.datetime]=None,
             start_date: Optional[datetime.datetime]=None,
             fields: TransactionFields=TransactionFields.TRANSACTION,
-    ) -> APIResponse:
+    ) -> Transaction:
         """Find and return a transaction by its id
 
         The PayPal API does not provide a way to look up transactions solely by
