@@ -14,4 +14,4 @@ The ``paypal-query`` tool is implemented in ``cliquery.py``. Other submodules li
 Running tests
 -------------
 
-Run ``./setup.py test`` to run unit tests. Run ``./setup.py typecheck`` to run the type checker. Run ``tox`` to run both on all supported Pythons.
+Run ``pytest`` to run unit tests. Run ``mypy paypal_rest`` to run the type checker. Run ``tox`` to run both on all supported Pythons.
